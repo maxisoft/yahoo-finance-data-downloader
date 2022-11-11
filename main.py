@@ -24,6 +24,10 @@ def configure_pandas():
     pd.set_option('display.width', 1000)
 
 
+def symbol_to_file_name(symbol, ext='.csv.xz', replacement_text='_'):
+    return sanitize_filename(symbol.replace('/', '_') + ext, replacement_text=replacement_text)
+
+
 @njit()
 def merge_ohlcav(left, right, left_time, right_time):
     l = 0
@@ -108,7 +112,7 @@ def download(symbol: str, start=None, end=None):
 
 
 def combine(symbol):
-    file_name = sanitize_filename(symbol.replace('/', '_') + '.csv.xz', replacement_text='_')
+    file_name = symbol_to_file_name(symbol)
     prev = None
     columns = None
     if Path(file_name).exists():
@@ -140,7 +144,7 @@ def combine(symbol):
 
 
 def process(symbol: str):
-    file_name = sanitize_filename(symbol.replace('/', '_') + '.csv.xz', replacement_text='_')
+    file_name = symbol_to_file_name(symbol)
     df = combine(symbol)
     df.to_csv(file_name, index_label='time')
     return symbol
