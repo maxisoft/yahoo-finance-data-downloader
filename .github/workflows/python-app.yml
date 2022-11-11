@@ -39,12 +39,19 @@ jobs:
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
         
+    - name: Login to Kaggle
+      uses: osbm/kaggle-login@v2.3
+      with:
+        KAGGLE_USERNAME: ${{ github.repository_owner }}
+        KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
     - name: Run app
       run: |
         mkdir -p /tmp/out
         script_path="$PWD/main.py"
         ln -s "$PWD/symbols.txt" /tmp/out/symbols.txt
         pushd /tmp/out
+        kaggle datasets download -w --unzip --force ${{ github.repository }}
+        ls -lah
         python $script_path
         popd
 
@@ -77,6 +84,5 @@ jobs:
         description: "## Example of dataset syncronized by github actions <br/>Source https://github.com/jaimevalero/test-actions and https://github.com/jaimevalero/push-kaggle-dataset <br/> "
         files: |
           *.csv.xz
-          symbols.txt
         is_public: false
 
