@@ -53,6 +53,7 @@ jobs:
           kaggle datasets download -w --unzip --force ${{ github.repository }}
           ls -lah
           python $script_path
+          rm -rf symbols.txt
           popd
 
       - name: Upload Artifact
