@@ -24,8 +24,8 @@ def configure_pandas():
     pd.set_option('display.width', 1000)
 
 
-def symbol_to_file_name(symbol, ext='.csv.xz', replacement_text='_'):
-    return sanitize_filename(symbol.replace('/', replacement_text) + ext, replacement_text=replacement_text)
+def symbol_to_file_name(symbol, ext='.csv.xz', replacement_text='X'):
+    return sanitize_filename(symbol.replace('/', replacement_text).replace('^', replacement_text).replace('=', replacement_text) + ext, replacement_text=replacement_text)
 
 
 @njit()
