@@ -25,7 +25,7 @@ def configure_pandas():
 
 
 def symbol_to_file_name(symbol, ext='.csv.xz', replacement_text='_'):
-    return sanitize_filename(symbol.replace('/', '_') + ext, replacement_text=replacement_text)
+    return sanitize_filename(symbol.replace('/', replacement_text) + ext, replacement_text=replacement_text)
 
 
 @njit()
