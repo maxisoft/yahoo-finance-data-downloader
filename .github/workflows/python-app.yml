@@ -50,7 +50,7 @@ jobs:
           script_path="$PWD/main.py"
           ln -s "$PWD/symbols.txt" /tmp/out/symbols.txt
           pushd /tmp/out
-          kaggle datasets download -w --unzip --force ${{ github.repository }}
+          kaggle datasets download -w --unzip --force ${{ github.repository }} || :
           ls -lah
           python $script_path
           popd
