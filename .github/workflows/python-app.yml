@@ -55,13 +55,28 @@ jobs:
         path: /tmp/out/
         retention-days: 1
 
-  upload_to_github:
+  upload_to_kaggle:
     runs-on: ubuntu-latest
     needs: [run]
+    if: ${{ github.actor }} == ${{ github.repository_owner }}
     steps:
     - uses: actions/download-artifact@v3
       with:
         name: yahoodata
     - name: Display structure of downloaded files
       run: ls -R
+    - name: Upload datasets
+      uses: jaimevalero/push-kaggle-dataset@v3
+      env:
+        KAGGLE_USERNAME: ${{ github.repository_owner }}
+        KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+
+      with:
+        title: "Yahoo Financial data"
+        subtitle: "Yahoo Financial data"
+        description: "## Example of dataset syncronized by github actions <br/>Source https://github.com/jaimevalero/test-actions and https://github.com/jaimevalero/push-kaggle-dataset <br/> "
+        files: |
+          *.csv.xz
+          symbols.txt
+        is_public: false
 
