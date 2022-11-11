@@ -39,7 +39,15 @@ jobs:
       run: |
         mkdir -p /tmp/out
         script_path="$PWD/main.py"
+        ln -s "$PWD/symbols.txt" /tmp/out/symbols.txt
         pushd /tmp/out
         python $script_path
         popd
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: news
+        path: /tmp/out/
+        retention-days: 1
 
