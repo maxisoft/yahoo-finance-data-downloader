@@ -25,7 +25,9 @@ def configure_pandas():
 
 
 def symbol_to_file_name(symbol, ext='.csv.xz', replacement_text='X'):
-    return sanitize_filename(symbol.replace('/', replacement_text).replace('^', replacement_text).replace('=', replacement_text) + ext, replacement_text=replacement_text)
+    return sanitize_filename(
+        symbol.replace('/', replacement_text).replace('^', replacement_text).replace('=', replacement_text) + ext,
+        replacement_text=replacement_text)
 
 
 @njit()
@@ -129,7 +131,11 @@ def combine(symbol):
                               right.index.to_numpy('int64'))
         return pd.DataFrame(*merged, columns=columns or None)
 
-    if prev is None or datetime.datetime.now().timestamp() - prev.index.to_numpy()[-1] // 1000 > 6 * 24 * 60 * 60:
+    if (
+            prev is None or
+            len(prev) == 0 or
+            datetime.datetime.now().timestamp() - prev.index.to_numpy()[-1] // 1000 // 1000 >
+            6 * 24 * 60 * 60):
         current = download(symbol, start, start := start + datetime.timedelta(days=6))
         if prev is not None:
             prev = merge(prev, current)
