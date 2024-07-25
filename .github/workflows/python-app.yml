@@ -144,7 +144,7 @@ jobs:
         run: |
           mkdir -p /tmp/out
 
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         if: ${{ github.actor == github.repository_owner }}
         with:
           name: downloaded-data
@@ -239,7 +239,7 @@ jobs:
     needs: [ run ]
     if: ${{ github.actor == github.repository_owner && (github.event_name == 'push' && github.base_ref == 'main' || github.event_name == 'schedule') }}
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: yahoodata
       - name: Display structure of downloaded files
