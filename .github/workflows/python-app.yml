@@ -80,6 +80,22 @@ jobs:
           cd /tmp/out
           kaggle datasets download -w --unzip --force ${{ github.repository }}
 
+      - name: Check Downloaded Files
+        run: |
+          # Check for at least 2 downloaded CSV.XZ files
+          if [ $(find . -type f -name "*.csv.xz" | wc -l) -lt 2 ]; then
+            echo "Error: Less than 2 downloaded CSV.XZ files found!"
+            exit 1
+          fi
+
+          # Check for existence and size of BTC-USD.csv.xz
+          if [ ! -f "./BTC-USD.csv.xz" -o "$(stat -c %s ./BTC-USD.csv.xz)" -eq 0 ]; then
+            echo "Error: BTC-USD.csv.xz not found or has zero size!"
+            exit 1
+          fi
+
+          echo "Downloaded data seems valid!"
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
