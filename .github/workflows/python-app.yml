@@ -106,7 +106,7 @@ jobs:
 
       - name: Upload Artifact
         if: ${{ github.actor == github.repository_owner }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: downloaded-data
           path: /tmp/out/
@@ -228,7 +228,7 @@ jobs:
           echo "Created data seems valid!"
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: yahoodata
           path: /tmp/out/
