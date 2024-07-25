@@ -77,10 +77,14 @@ jobs:
 
       - name: Download data
         if: ${{ github.actor == github.repository_owner }}
-        run: |
-          mkdir -p /tmp/out
-          cd /tmp/out
-          kaggle datasets download -w --unzip --force ${{ github.repository }}
+        uses: Wandalen/wretry.action@v3.5.0
+        with:
+          attempt_limit: 10
+          attempt_delay: 60000
+          command: |
+            mkdir -p /tmp/out
+            cd /tmp/out
+            kaggle datasets download -w --unzip --force ${{ github.repository }}
 
       - name: Check Downloaded Files
         if: ${{ github.actor == github.repository_owner }}
