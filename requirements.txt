@@ -3,7 +3,7 @@ setuptools~=71.1.0
 wheel~=0.43.0
 yfinance~=0.2.41
 
-pandas~=1.5.1
+pandas~=2.2.2
 numba~=0.60.0
 numpy~=1.23.4
 pathvalidate~=3.2.0
