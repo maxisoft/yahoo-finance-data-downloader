@@ -15,8 +15,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.head_ref || github.run_id }}
-  cancel-in-progress: true
+  group: ${{ github.head_ref || github.run_id }}-${{ github.actor || github.repository_owner }}
+  cancel-in-progress: ${{ (github.event_name == 'push' && github.base_ref == 'main' || github.event_name == 'schedule') && github.actor == github.repository_owner }}
 
 jobs:
   lint-and-test:
@@ -54,7 +54,7 @@ jobs:
 
       - name: Lint another time with flake8
         run: |
-            flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Run tests
         if: false
@@ -69,18 +69,21 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Login to Kaggle
+        if: ${{ github.actor == github.repository_owner }}
         uses: osbm/kaggle-login@v2.3
         with:
           KAGGLE_USERNAME: ${{ github.repository_owner }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
 
       - name: Download data
+        if: ${{ github.actor == github.repository_owner }}
         run: |
           mkdir -p /tmp/out
           cd /tmp/out
           kaggle datasets download -w --unzip --force ${{ github.repository }}
 
       - name: Check Downloaded Files
+        if: ${{ github.actor == github.repository_owner }}
         run: |
           cd /tmp/out/
           # Check for at least 2 downloaded CSV.XZ files
@@ -98,6 +101,7 @@ jobs:
           echo "Downloaded data seems valid!"
 
       - name: Upload Artifact
+        if: ${{ github.actor == github.repository_owner }}
         uses: actions/upload-artifact@v3
         with:
           name: downloaded-data
@@ -125,17 +129,19 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Login to Kaggle
+        if: ${{ github.actor == github.repository_owner }}
         uses: osbm/kaggle-login@v2.3
         with:
           KAGGLE_USERNAME: ${{ github.repository_owner }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-      
-      
+
+
       - name: mkdir tmp
         run: |
-           mkdir -p /tmp/out
+          mkdir -p /tmp/out
 
       - uses: actions/download-artifact@v3
+        if: ${{ github.actor == github.repository_owner }}
         with:
           name: downloaded-data
           path: /tmp/out/
@@ -144,6 +150,7 @@ jobs:
         run: ls -R /tmp/out
 
       - name: Check Downloaded Files
+        if: ${{ github.actor == github.repository_owner }}
         run: |
           cd /tmp/out/
           # Check for at least 2 downloaded CSV.XZ files
@@ -161,6 +168,7 @@ jobs:
           echo "Downloaded data seems valid!"
 
       - name: Get BTC-USD.csv.xz stats before running script
+        if: ${{ github.actor == github.repository_owner }}
         run: |
           btc_stats_before=$(stat -c %y,%s /tmp/out/BTC-USD.csv.xz 2>/dev/null)
           echo "$btc_stats_before" > /tmp/btc_stats_before.txt
@@ -176,6 +184,7 @@ jobs:
           popd
 
       - name: Check BTC-USD.csv.xz stats after running script
+        if: ${{ github.actor == github.repository_owner }}
         run: |
           btc_stats_after=$(stat -c %y,%s /tmp/out/BTC-USD.csv.xz 2>/dev/null)
           btc_stats_before=$(cat /tmp/btc_stats_before.txt)
@@ -197,6 +206,23 @@ jobs:
             exit 1
           fi
 
+      - name: Check Created Files
+        run: |
+          cd /tmp/out/
+          # Check for at least 2 created CSV.XZ files
+          if [ $(find . -type f -name "*.csv.xz" -depth | wc -l) -lt 2 ]; then
+            echo "Error: Less than 2 created CSV.XZ files found!"
+            exit 1
+          fi
+
+          # Check for existence and size of BTC-USD.csv.xz
+          if [ ! -f "./BTC-USD.csv.xz" -o "$(stat -c %s ./BTC-USD.csv.xz)" -eq 0 ]; then
+            echo "Error: BTC-USD.csv.xz not found or has zero size!"
+            exit 1
+          fi
+
+          echo "Created data seems valid!"
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:
@@ -207,7 +233,7 @@ jobs:
   upload_to_kaggle:
     runs-on: ubuntu-latest
     needs: [ run ]
-    if: ${{ github.actor }} == ${{ github.repository_owner }}
+    if: ${{ github.actor == github.repository_owner && (github.event_name == 'push' && github.base_ref == 'main' || github.event_name == 'schedule') }}
     steps:
       - uses: actions/download-artifact@v3
         with:
