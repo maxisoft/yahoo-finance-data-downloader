@@ -9,7 +9,7 @@ on:
     - cron: "33 18 * * *"
 
 env:
-  PYTHON_VERSION: "3.11"
+  PYTHON_VERSION: "graalpy-24"
 
 permissions:
   contents: read
@@ -34,16 +34,16 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          key: ${{ runner.os }}-${{ env.PYTHON_VERSION }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-${{ env.PYTHON_VERSION }}-pip-
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install flake8 pytest
 
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements.txt ]; then pip install -r <(grep -v numba requirements.txt); fi
 
       - name: Lint with flake8
         run: |
@@ -124,13 +124,13 @@ jobs:
       - uses: actions/cache@v3
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          key: ${{ runner.os }}-${{ env.PYTHON_VERSION }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-${{ env.PYTHON_VERSION }}-pip-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements.txt ]; then pip install -r <(grep -v numba requirements.txt); fi
 
       - name: Login to Kaggle
         if: ${{ github.actor == github.repository_owner }}
