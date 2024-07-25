@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"  # All files in the repository are scanned
+    schedule:
+      interval: "weekly"  # Check for updates weekly
+    allow:
+      # Explicitly allow updates for listed dependencies
+      - dependency: "pip"
+      - dependency: "setuptools"
+      - dependency: "wheel"
+      - dependency: "yfinance"
+      - dependency: "pandas"
+      - dependency: "numba"
+      - dependency: "numpy"
+      - dependency: "pathvalidate"
