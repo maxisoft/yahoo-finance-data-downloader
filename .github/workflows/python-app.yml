@@ -74,7 +74,7 @@ jobs:
           KAGGLE_USERNAME: ${{ github.repository_owner }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
 
-      - name: Download data (replace with your Kaggle dataset download command)
+      - name: Download data
         run: |
           mkdir -p /tmp/out
           cd /tmp/out
@@ -82,8 +82,9 @@ jobs:
 
       - name: Check Downloaded Files
         run: |
+          cd /tmp/out/
           # Check for at least 2 downloaded CSV.XZ files
-          if [ $(find . -type f -name "*.csv.xz" | wc -l) -lt 2 ]; then
+          if [ $(find . -type f -name "*.csv.xz" -depth | wc -l) -lt 2 ]; then
             echo "Error: Less than 2 downloaded CSV.XZ files found!"
             exit 1
           fi
@@ -142,6 +143,28 @@ jobs:
       - name: Display structure of downloaded files
         run: ls -R /tmp/out
 
+      - name: Check Downloaded Files
+        run: |
+          cd /tmp/out/
+          # Check for at least 2 downloaded CSV.XZ files
+          if [ $(find . -type f -name "*.csv.xz" -depth | wc -l) -lt 2 ]; then
+            echo "Error: Less than 2 downloaded CSV.XZ files found!"
+            exit 1
+          fi
+
+          # Check for existence and size of BTC-USD.csv.xz
+          if [ ! -f "./BTC-USD.csv.xz" -o "$(stat -c %s ./BTC-USD.csv.xz)" -eq 0 ]; then
+            echo "Error: BTC-USD.csv.xz not found or has zero size!"
+            exit 1
+          fi
+
+          echo "Downloaded data seems valid!"
+
+      - name: Get BTC-USD.csv.xz stats before running script
+        run: |
+          btc_stats_before=$(stat -c %y,%s /tmp/out/BTC-USD.csv.xz 2>/dev/null)
+          echo "$btc_stats_before" > /tmp/btc_stats_before.txt
+
       - name: Run app
         run: |
           script_path="$PWD/main.py"
@@ -151,6 +174,28 @@ jobs:
           python $script_path
           rm -rf symbols.txt
           popd
+
+      - name: Check BTC-USD.csv.xz stats after running script
+        run: |
+          btc_stats_after=$(stat -c %y,%s /tmp/out/BTC-USD.csv.xz 2>/dev/null)
+          btc_stats_before=$(cat /tmp/btc_stats_before.txt)
+          if [ $? -eq 0 ]; then
+            echo "BTC-USD.csv.xz modification time (after): $btc_stats_after"
+            # Extract modification time and size from each variable
+            before_mtime=$(echo "$btc_stats_before" | cut -d',' -f1)
+            before_size=$(echo "$btc_stats_before" | cut -d',' -f2)
+            after_mtime=$(echo "$btc_stats_after" | cut -d',' -f1)
+            after_size=$(echo "$btc_stats_after" | cut -d',' -f2)
+
+            # Compare modification time and size
+            if [[ "$before_mtime" == "$after_mtime" || "$before_size" == "$after_size" ]]; then
+              echo "Error: BTC-USD.csv.xz not modified or size changed unexpectedly!"
+              exit 1
+            fi
+          else
+            echo "Error: BTC-USD.csv.xz not found after running script."
+            exit 1
+          fi
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
