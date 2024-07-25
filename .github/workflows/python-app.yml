@@ -85,7 +85,7 @@ jobs:
         with:
           name: downloaded-data
           path: /tmp/out/
-          retention-days: 1
+          retention-days: 90
   run:
 
     runs-on: ubuntu-latest
