@@ -19,12 +19,26 @@ from concurrent.futures import ThreadPoolExecutor, wait, Future
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
 def configure_pandas():
+    """
+    Configures pandas settings for better display of DataFrames.
+    """
     pd.set_option('display.max_rows', 500)
     pd.set_option('display.max_columns', 500)
     pd.set_option('display.width', 1000)
 
 
 def symbol_to_file_name(symbol, ext='.csv.xz', replacement_text='X'):
+    """
+    Generates a sanitized filename from a stock symbol.
+
+    Args:
+        symbol (str): The stock symbol.
+        ext (str, optional): The file extension. Defaults to '.csv.xz'.
+        replacement_text (str, optional): Text to replace invalid characters. Defaults to 'X'.
+
+    Returns:
+        str: The sanitized filename.
+    """
     return sanitize_filename(
         symbol.replace('/', replacement_text).replace('^', replacement_text).replace('=', replacement_text) + ext,
         replacement_text=replacement_text)
@@ -32,6 +46,22 @@ def symbol_to_file_name(symbol, ext='.csv.xz', replacement_text='X'):
 
 @njit()
 def merge_ohlcav(left, right, left_time, right_time):
+    """
+    Merges two OHLCV DataFrames, handling overlapping and missing data points.
+
+    This function efficiently merges two OHLCV (Open, High, Low, Close, Volume) DataFrames
+    while considering potential overlaps and missing data points. It prioritizes data points
+    with higher volume and uses a tie-breaking mechanism based on preceding volume values.
+
+    Args:
+        left (np.ndarray): The left DataFrame as a NumPy array.
+        right (np.ndarray): The right DataFrame as a NumPy array.
+        left_time (np.ndarray): The timestamps of the left DataFrame.
+        right_time (np.ndarray): The timestamps of the right DataFrame.
+
+    Returns:
+        tuple: A tuple containing the merged DataFrame and the corresponding timestamps.
+    """
     l = 0
     r = 0
     left_size = len(left)
@@ -100,6 +130,21 @@ def merge_ohlcav(left, right, left_time, right_time):
 
 
 def download(symbol: str, start=None, end=None):
+    """
+    Downloads OHLCV data for a stock symbol using yfinance.
+
+    This function retrieves OHLCV (Open, High, Low, Close, Volume) data for a specified
+    stock symbol from Yahoo Finance. It allows customization of the download start and end dates.
+
+    Args:
+        symbol (str): The stock symbol.
+        start (datetime.datetime, optional): The start date for the download. Defaults to None.
+        end (datetime.datetime, optional): The end date for the download. Defaults to None.
+
+    Returns:
+        pd.DataFrame: The downloaded OHLCV data as a DataFrame.
+    """
+
     ohlc = yf.download(symbol,
                        start=start,
                        end=end,
@@ -114,6 +159,19 @@ def download(symbol: str, start=None, end=None):
 
 
 def combine(symbol):
+    """
+    Combines downloaded OHLCV data for a stock symbol.
+
+    This function combines historical and recent OHLCV data for a given stock symbol. It
+    checks for existing data, downloads missing portions, and merges them into a single DataFrame.
+
+    Args:
+        symbol (str): The stock symbol.
+
+    Returns:
+        pd.DataFrame: The combined OHLCV DataFrame.
+    """
+
     file_name = symbol_to_file_name(symbol)
     prev = None
     columns = None
@@ -150,6 +208,18 @@ def combine(symbol):
 
 
 def process(symbol: str):
+    """
+    Downloads, combines, and saves OHLCV data for a stock symbol.
+
+    This function orchestrates the entire process of downloading, combining, and saving
+    OHLCV data for a specified stock symbol. Caller may utilizes multithreading for efficiency.
+
+    Args:
+        symbol (str): The stock symbol.
+
+    Returns:
+        str: The processed stock symbol.
+    """
     file_name = symbol_to_file_name(symbol)
     df = combine(symbol)
     df.to_csv(file_name, index_label='time')
