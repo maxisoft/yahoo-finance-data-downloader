@@ -1,7 +1,7 @@
 pip~=24.1.2
 setuptools~=71.1.0
 wheel~=0.43.0
-yfinance~=0.1.85
+yfinance~=0.2.41
 
 pandas~=1.5.1
 numba~=0.60.0
