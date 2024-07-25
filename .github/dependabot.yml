@@ -1,6 +1,10 @@
 version: 2
 updates:
   - package-ecosystem: pip
-    directory: "/"  # All files in the repository are scanned
+    directory: "/"
     schedule:
       interval: "weekly"  # Check for updates weekly
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: daily
