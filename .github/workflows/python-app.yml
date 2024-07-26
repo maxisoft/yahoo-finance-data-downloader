@@ -72,7 +72,7 @@ jobs:
         if: ${{ github.actor == github.repository_owner }}
         uses: osbm/kaggle-login@v2.3
         with:
-          KAGGLE_USERNAME: ${{ github.repository_owner }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || github.repository_owner }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
 
       - name: Download data
@@ -84,7 +84,7 @@ jobs:
           command: |
             mkdir -p /tmp/out
             cd /tmp/out
-            kaggle datasets download -w --unzip --force ${{ github.repository }}
+            kaggle datasets download -w --unzip --force ${{ secrets.KAGGLE_DATASET || github.repository }}
 
       - name: Check Downloaded Files
         if: ${{ github.actor == github.repository_owner }}
@@ -136,7 +136,7 @@ jobs:
         if: ${{ github.actor == github.repository_owner }}
         uses: osbm/kaggle-login@v2.3
         with:
-          KAGGLE_USERNAME: ${{ github.repository_owner }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || github.repository_owner }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
 
 
@@ -247,17 +247,17 @@ jobs:
       - name: Upload datasets
         uses: jaimevalero/push-kaggle-dataset@v3
         env:
-          KAGGLE_USERNAME: ${{ github.repository_owner }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || github.repository_owner }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
 
         with:
-          title: "Yahoo Financial data"
-          subtitle: "Yahoo Financial data"
+          title: ${{ secrets.KAGGLE_DATASET_TITLE || 'Yahoo Financial data' }}
+          subtitle: ${{ secrets.KAGGLE_DATASET_SUBTITLE || 'Yahoo Financial data' }}
           description: |
             ## This dataset contains minutely stock data price of various market in a csv file format
 
             This dataset was automatically uploaded from a GitHub Actions workflow 
-            running in the ${{ github.repository }} repository. 
+            running in the ${{ secrets.KAGGLE_DATASET || github.repository }} repository. 
 
             Feel free to explore and use this data for your analysis!
           files: |
