@@ -7,16 +7,20 @@ on:
     branches: [ "main" ]
   schedule:
     - cron: "33 18 * * *"
+  workflow_dispatch:
 
 env:
-  PYTHON_VERSION: "3.11"
+  PYTHON_VERSION: ${{ vars.PYTHON_VERSION || '3.11' }}
+  KAGGLE_USERNAME: ${{ vars.KAGGLE_USERNAME || secrets.KAGGLE_USERNAME || github.repository_owner }}
+  KAGGLE_DATASET: ${{ vars.KAGGLE_DATASET || secrets.KAGGLE_DATASET || github.repository }}
+  ACTOR_IS_OWNER: ${{ github.actor == github.repository_owner }}
 
 permissions:
   contents: read
 
 concurrency:
   group: ${{ github.head_ref || github.run_id }}-${{ github.actor || github.repository_owner }}
-  cancel-in-progress: ${{ (github.event_name == 'push' && github.base_ref == 'main' || github.event_name == 'schedule') && github.actor == github.repository_owner }}
+  cancel-in-progress: ${{ (github.event_name == 'push' && github.base_ref == 'main' || github.event_name == 'schedule') && env.ACTOR_IS_OWNER == 'true' }}
 
 jobs:
   lint-and-test:
@@ -31,6 +35,7 @@ jobs:
           python-version: "${{ env.PYTHON_VERSION }}"
 
       - name: Cache pip dependencies
+        if: ${{ env.ACTOR_IS_OWNER == 'true' }}
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
@@ -69,14 +74,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Login to Kaggle
-        if: ${{ github.actor == github.repository_owner }}
+        if: ${{ env.ACTOR_IS_OWNER == 'true' }}
         uses: osbm/kaggle-login@v2.3
         with:
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || github.repository_owner }}
+          KAGGLE_USERNAME: ${{ env.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
 
       - name: Download data
-        if: ${{ github.actor == github.repository_owner }}
+        if: ${{ env.ACTOR_IS_OWNER == 'true' }}
         uses: Wandalen/wretry.action@v3.5.0
         with:
           attempt_limit: 10
@@ -84,10 +89,10 @@ jobs:
           command: |
             mkdir -p /tmp/out
             cd /tmp/out
-            kaggle datasets download -w --unzip --force ${{ secrets.KAGGLE_DATASET || github.repository }}
+            kaggle datasets download -w --unzip --force ${{ env.KAGGLE_DATASET }}
 
       - name: Check Downloaded Files
-        if: ${{ github.actor == github.repository_owner }}
+        if: ${{ env.ACTOR_IS_OWNER == 'true' }}
         run: |
           cd /tmp/out/
           # Check for at least 2 downloaded CSV.XZ files
@@ -105,12 +110,12 @@ jobs:
           echo "Downloaded data seems valid!"
 
       - name: Upload Artifact
-        if: ${{ github.actor == github.repository_owner }}
+        if: ${{ env.ACTOR_IS_OWNER == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: downloaded-data
-          path: /tmp/out/
-          retention-days: 90
+          path: /tmp/out
+          retention-days: 1
   run:
 
     runs-on: ubuntu-latest
@@ -133,28 +138,33 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Login to Kaggle
-        if: ${{ github.actor == github.repository_owner }}
+        if: ${{ env.ACTOR_IS_OWNER == 'true' }}
         uses: osbm/kaggle-login@v2.3
         with:
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || github.repository_owner }}
+          KAGGLE_USERNAME: ${{ env.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-
 
       - name: mkdir tmp
         run: |
           mkdir -p /tmp/out
 
       - uses: actions/download-artifact@v4
-        if: ${{ github.actor == github.repository_owner }}
+        if: ${{ env.ACTOR_IS_OWNER == 'true' }}
         with:
           name: downloaded-data
           path: /tmp/out/
+
+      - uses: geekyeggo/delete-artifact@v5
+        if: ${{ env.ACTOR_IS_OWNER == 'true' }}
+        with:
+            name: downloaded-data
+            failOnError: false
 
       - name: Display structure of downloaded files
         run: ls -R /tmp/out
 
       - name: Check Downloaded Files
-        if: ${{ github.actor == github.repository_owner }}
+        if: ${{ env.ACTOR_IS_OWNER == 'true' }}
         run: |
           cd /tmp/out/
           # Check for at least 2 downloaded CSV.XZ files
@@ -172,7 +182,7 @@ jobs:
           echo "Downloaded data seems valid!"
 
       - name: Get BTC-USD.csv.xz stats before running script
-        if: ${{ github.actor == github.repository_owner }}
+        if: ${{ env.ACTOR_IS_OWNER == 'true' }}
         run: |
           btc_stats_before=$(stat -c %y,%s /tmp/out/BTC-USD.csv.xz 2>/dev/null)
           echo "$btc_stats_before" > /tmp/btc_stats_before.txt
@@ -188,7 +198,7 @@ jobs:
           popd
 
       - name: Check BTC-USD.csv.xz stats after running script
-        if: ${{ github.actor == github.repository_owner }}
+        if: ${{ env.ACTOR_IS_OWNER == 'true' }}
         run: |
           btc_stats_after=$(stat -c %y,%s /tmp/out/BTC-USD.csv.xz 2>/dev/null)
           btc_stats_before=$(cat /tmp/btc_stats_before.txt)
@@ -237,7 +247,7 @@ jobs:
   upload_to_kaggle:
     runs-on: ubuntu-latest
     needs: [ run ]
-    if: ${{ github.actor == github.repository_owner && (github.event_name == 'push' && github.base_ref == 'main' || github.event_name == 'schedule') }}
+    if: ${{ env.ACTOR_IS_OWNER == 'true' && ((github.event_name == 'push' && github.base_ref == 'main') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -247,17 +257,17 @@ jobs:
       - name: Upload datasets
         uses: jaimevalero/push-kaggle-dataset@v3
         env:
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || github.repository_owner }}
+          KAGGLE_USERNAME: ${{ env.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
 
         with:
-          title: ${{ secrets.KAGGLE_DATASET_TITLE || 'Yahoo Financial data' }}
-          subtitle: ${{ secrets.KAGGLE_DATASET_SUBTITLE || 'Yahoo Financial data' }}
+          title: ${{ vars.KAGGLE_DATASET_TITLE || 'Yahoo Financial data' }}
+          subtitle: ${{ vars.KAGGLE_DATASET_SUBTITLE || 'Yahoo Financial data' }}
           description: |
             ## This dataset contains minutely stock data price of various market in a csv file format
 
             This dataset was automatically uploaded from a GitHub Actions workflow 
-            running in the ${{ secrets.KAGGLE_DATASET || github.repository }} repository. 
+            running in the `${{ github.repository }}` repository.
 
             Feel free to explore and use this data for your analysis!
           files: |
