@@ -20,7 +20,7 @@ permissions:
 
 concurrency:
   group: ${{ github.head_ref || github.run_id }}-${{ github.actor || github.repository_owner }}
-  cancel-in-progress: ${{ (github.event_name == 'push' && github.base_ref == 'main' || github.event_name == 'schedule') && env.ACTOR_IS_OWNER == 'true' }}
+  cancel-in-progress: ${{ (github.event_name == 'push' && github.base_ref == 'main' || github.event_name == 'schedule') && github.actor == github.repository_owner }}
 
 jobs:
   lint-and-test:
