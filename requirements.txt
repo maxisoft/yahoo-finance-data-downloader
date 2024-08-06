@@ -1,5 +1,5 @@
 pip~=24.2
-setuptools~=71.1.0
+setuptools~=72.1.0
 wheel~=0.44.0
 yfinance~=0.2.41
 
