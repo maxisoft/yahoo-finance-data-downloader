@@ -201,7 +201,14 @@ def combine(symbol):
             prev = current
             columns = list(current.columns)
         for i in range(1, 4):
-            prev = merge(prev, download(symbol, start, start := start + datetime.timedelta(days=6)))
+            end = start + datetime.timedelta(days=6)
+            try:
+                new_one = download(symbol, start, end)
+                if new_one is not None and len(new_one) > 0:
+                    prev = merge(prev, new_one)
+            finally:
+                start = end
+                
     current = download(symbol)
 
     return merge(prev, current)
