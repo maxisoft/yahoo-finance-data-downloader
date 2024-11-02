@@ -273,9 +273,10 @@ jobs:
       - name: Display structure of downloaded files
         run: ls -R
 
-      - uses: actions/attest-build-provenance@v1
-        with:
-          subject-path: '${{ github.workspace }}/*.csv.xz'
+      #- uses: actions/attest-build-provenance@v1
+      #  with:
+      #    subject-path: '${{ github.workspace }}/*.csv.xz'
+      # TODO create a sha hash list text file and sign it
 
       - name: Upload datasets
         uses: jaimevalero/push-kaggle-dataset@v3
