@@ -91,7 +91,7 @@ jobs:
 
       - name: Download data
         if: ${{ env.ACTOR_IS_OWNER == 'true' }}
-        uses: Wandalen/wretry.action@v3.5.0
+        uses: Wandalen/wretry.action@v3.8.0
         with:
           attempt_limit: 10
           attempt_delay: 60000
