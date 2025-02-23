@@ -14,6 +14,8 @@ import yfinance as yf
 from pathvalidate import sanitize_filename
 from concurrent.futures import ThreadPoolExecutor, wait, Future
 
+# Define expected columns to ensure consistency
+expected_columns = {k: i for i, k in enumerate(('Open', 'High', 'Low', 'Close', 'Volume'))}
 
 # Press Maj+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
@@ -129,7 +131,7 @@ def merge_ohlcav(left, right, left_time, right_time):
     return res[:i], times[:i]
 
 
-def download(symbol: str, start=None, end=None):
+def download(symbol: str, start=None, end=None, reindex=True):
     """
     Downloads OHLCV data for a stock symbol using yfinance.
 
@@ -148,6 +150,7 @@ def download(symbol: str, start=None, end=None):
     ohlc = yf.download(symbol,
                        start=start,
                        end=end,
+                       repair=True,
                        prepost=True,
                        interval="1m",
                        ignore_tz=False,
@@ -155,7 +158,35 @@ def download(symbol: str, start=None, end=None):
                        timeout=30,
                        progress=False)
     ohlc.index = pd.to_datetime(ohlc.index).astype(np.int64) // 10 ** 3
+    if reindex:
+        ohlc = reindex_columns(ohlc, expected_columns)
     return ohlc
+
+def reindex_columns(df, columns: dict[str, int]):
+    # Fix new column naming where Close is now f'Close/{SYMBOL}'
+
+    new_columns = set()
+    df_column = list(df.columns)
+    for i, col in enumerate(df.columns):
+        if isinstance(col, tuple):
+            col = col[0]
+        col: str = col.capitalize()
+        for sep in ('', '/', '^', ' '):
+            if sep:
+                col = col.split(sep)[0]
+            if col in columns:
+                new_columns.add(col)
+                df_column[i] = col
+                break
+    df.columns = df_column
+
+    if len(new_columns) != len(columns) or new_columns != set(columns.keys()):
+        raise ValueError(
+            f"Missing columns: {set(columns.keys()) - new_columns}"
+        )
+
+    return df.reindex(columns=columns.keys())
+
 
 
 def combine(symbol):
@@ -174,14 +205,12 @@ def combine(symbol):
 
     file_name = symbol_to_file_name(symbol)
     prev = None
-    # Define expected columns to ensure consistency
-    expected_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
     
     if Path(file_name).exists():
         prev = pd.read_csv(file_name, dtype=np.float64, index_col=["time"])
         prev.index = prev.index.astype(np.int64)
         # Align columns with expected_columns, filling missing with NaN
-        prev = prev.reindex(columns=expected_columns)
+        prev = reindex_columns(prev, expected_columns)
 
     start = datetime.datetime.now() - datetime.timedelta(days=28)
 
@@ -211,10 +240,8 @@ def combine(symbol):
                     prev = merge(prev, new_one)
             finally:
                 start = end
-                
-    # After downloading new data, align columns
+
     current = download(symbol)
-    current = current.reindex(columns=expected_columns)  # Ensure current has expected columns
 
     return merge(prev, current)
 
