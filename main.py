@@ -1,6 +1,7 @@
-import datetime
 import logging
 import random
+import re
+import time
 from pathlib import Path
 
 try:
@@ -13,21 +14,17 @@ import pandas as pd
 import yfinance as yf
 from pathvalidate import sanitize_filename
 from concurrent.futures import ThreadPoolExecutor, wait, Future
+from datetime import datetime, timedelta
 
-# Define expected columns to ensure consistency
-expected_columns = {k: i for i, k in enumerate(('Open', 'High', 'Low', 'Close', 'Volume'))}
+EXPECTED_COLUMNS = {'Open': 0, 'High': 1, 'Low': 2, 'Close': 3, 'Volume': 4}
+COLUMN_NAMES = list(EXPECTED_COLUMNS.keys())  # Maintain explicit order
 
-# Press Maj+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
 def configure_pandas():
-    """
-    Configures pandas settings for better display of DataFrames.
-    """
+    """Configure pandas display settings for wide terminal output"""
     pd.set_option('display.max_rows', 500)
     pd.set_option('display.max_columns', 500)
     pd.set_option('display.width', 1000)
-
 
 def symbol_to_file_name(symbol, ext='.csv.xz', replacement_text='X'):
     """
@@ -45,206 +42,235 @@ def symbol_to_file_name(symbol, ext='.csv.xz', replacement_text='X'):
         symbol.replace('/', replacement_text).replace('^', replacement_text).replace('=', replacement_text) + ext,
         replacement_text=replacement_text)
 
+# Helper functions
+def normalize_column(raw_col) -> str:
+    """Extract base column name with priority to expected columns"""
+    if isinstance(raw_col, tuple):
+        raw_col = raw_col[0]
 
-@njit()
-def merge_ohlcav(left, right, left_time, right_time):
+    # Split into parts using non-alphanumeric characters
+    parts = re.split(r'[^A-Za-z0-9]', str(raw_col))
+
+    # Check each part for expected columns
+    for part in parts:
+        part_norm = part.capitalize()
+        if part_norm in EXPECTED_COLUMNS:
+            return part_norm
+
+    # Fallback to first part
+    return parts[0].capitalize() if parts else raw_col.capitalize()
+
+def make_unique(base: str, seen: set) -> str:
+    """Generate unique column name"""
+    unique = base
+    cnt = 1
+    while unique in seen:
+        unique = f"{base}_{cnt}"
+        cnt += 1
+    seen.add(unique)
+    return unique
+
+
+def reindex_columns(df: pd.DataFrame, column_map: dict[str, int]) -> pd.DataFrame:
+    """Normalize columns with deduplication"""
+    normalized = []
+    seen = set()
+
+    # First pass: collect normalized names
+    for raw_col in df.columns:
+        base_col = normalize_column(raw_col)  # Your existing normalization logic
+        unique_col = make_unique(base_col, seen)  # Deduplication logic
+        normalized.append(unique_col)
+
+    df.columns = normalized
+
+    # Verify required columns exist
+    missing = set(column_map) - set(normalized)
+    if missing:
+        raise ValueError(f"Missing columns: {missing}")
+
+    return df.reindex(columns=column_map.keys()).rename(
+        columns=lambda x: x if x in column_map else None
+    ).dropna(axis=1, how="all")
+
+
+@njit
+def merge_ohlcav(left: np.ndarray, right: np.ndarray,
+                 left_time: np.ndarray, right_time: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
-    Merges two OHLCV DataFrames, handling overlapping and missing data points.
-
-    This function efficiently merges two OHLCV (Open, High, Low, Close, Volume) DataFrames
-    while considering potential overlaps and missing data points. It prioritizes data points
-    with higher volume and uses a tie-breaking mechanism based on preceding volume values.
+    Merge two OHLCV datasets using volume-based conflict resolution.
 
     Args:
-        left (np.ndarray): The left DataFrame as a NumPy array.
-        right (np.ndarray): The right DataFrame as a NumPy array.
-        left_time (np.ndarray): The timestamps of the left DataFrame.
-        right_time (np.ndarray): The timestamps of the right DataFrame.
+        left: Numpy array of shape (n1, 5) containing [Open, High, Low, Close, Volume]
+        right: Numpy array of shape (n2, 5) containing same columns
+        left_time: Numpy array of timestamps for left data
+        right_time: Numpy array of timestamps for right data
 
     Returns:
-        tuple: A tuple containing the merged DataFrame and the corresponding timestamps.
+        tuple: (merged_data, merged_timestamps)
     """
-    l = 0
-    r = 0
-    left_size = len(left)
-    right_size = len(right)
-    res = np.zeros((right_size + left_size, left.shape[1]), dtype=left.dtype)
-    times = np.zeros(len(res), dtype=left_time.dtype)
-    max_time = max(np.iinfo(left_time.dtype).max, np.iinfo(right_time.dtype).max)
-    i = 0
-    for i in range(res.shape[0]):
-        if l >= left_size:
-            lt = max_time
-        else:
-            lt = left_time[l]
+    # Column indices from EXPECTED_COLUMNS
+    OPEN_IDX = 0
+    HIGH_IDX = 1
+    LOW_IDX = 2
+    CLOSE_IDX = 3
+    VOLUME_IDX = 4
 
-        rt = right_time[r] if r < right_size else max_time
-        if lt == rt:
-            if lt == max_time:
-                break
-            volume_right = right[r, 5]
-            volume_left = left[l, 5]
-            prefer_right = volume_right >= volume_left  # select best volume provider
-            if prefer_right:
-                if r > 0:
-                    prefer_right = right[r - 1, 5] != volume_right
+    # Initialize pointers and result arrays
+    left_idx = 0
+    right_idx = 0
+    n_left = len(left)
+    n_right = len(right)
+
+    # Pre-allocate arrays for maximum possible size
+    merged = np.empty((n_left + n_right, left.shape[1]), dtype=left.dtype)
+    merged_times = np.empty(n_left + n_right, dtype=left_time.dtype)
+
+    # Use maximum possible timestamp value for comparison
+    max_ts = max(np.iinfo(left_time.dtype).max,
+                 np.iinfo(right_time.dtype).max)
+
+    insert_idx = 0
+
+    while left_idx < n_left or right_idx < n_right:
+        # Get current timestamps
+        left_ts = left_time[left_idx] if left_idx < n_left else max_ts
+        right_ts = right_time[right_idx] if right_idx < n_right else max_ts
+
+        if left_ts == right_ts:
+            if left_ts == max_ts:
+                break  # Both arrays exhausted
+
+            # Conflict resolution for same timestamp
+            left_vol = left[left_idx, VOLUME_IDX]
+            right_vol = right[right_idx, VOLUME_IDX]
+
+            # Prefer higher volume, with tiebreaker using previous volume
+            if right_vol >= left_vol:
+                # Check if right's volume changed from previous
+                use_right = True
+                if right_idx > 0 and right[right_idx - 1, VOLUME_IDX] == right_vol:
+                    use_right = False
             else:
-                if l > 0:
-                    prefer_right = left[l - 1, 5] == volume_left
-            if prefer_right:
-                res[i, :] = right[r, :]
+                # Check if left's volume stayed the same
+                use_left = True
+                if left_idx > 0 and left[left_idx - 1, VOLUME_IDX] != left_vol:
+                    use_left = False
+                use_right = not use_left
+
+            if use_right:
+                merged[insert_idx] = right[right_idx]
             else:
-                res[i, :] = left[l, :]
-            if volume_right > 0 and volume_left > 0:
-                res[i, 1] = max(right[r, 1], left[l, 1])  # high
-                res[i, 2] = min(right[r, 2], left[l, 2])  # low
+                merged[insert_idx] = left[left_idx]
 
-            times[i] = lt
+            # Merge high/low values if both have valid volumes
+            if left_vol > 0 and right_vol > 0:
+                merged[insert_idx, HIGH_IDX] = max(
+                    left[left_idx, HIGH_IDX],
+                    right[right_idx, HIGH_IDX]
+                )
+                merged[insert_idx, LOW_IDX] = min(
+                    left[left_idx, LOW_IDX],
+                    right[right_idx, LOW_IDX]
+                )
 
-            next_l = l + 1
-            next_r = r + 1
+            merged_times[insert_idx] = left_ts
+            insert_idx += 1
 
-            lt = left_time[next_l] if next_l < left_size else max_time
-            rt = right_time[next_r] if next_r < right_size else max_time
+            # Advance both pointers
+            left_idx += 1
+            right_idx += 1
 
-            if lt < rt:
-                l += 1
-                if rt < max_time:
-                    r = np.searchsorted(right_time[r:], lt, 'right') + r
-            elif rt < lt:
-                r += 1
-                if lt < max_time:
-                    l = np.searchsorted(left_time[l:], rt, 'right') + l
-            else:
-                l += 1
-                r += 1
-
-        elif lt < rt:
-            res[i, :] = left[l, :]
-            times[i] = lt
-            l += 1
+        elif left_ts < right_ts:
+            # Take from left array
+            merged[insert_idx] = left[left_idx]
+            merged_times[insert_idx] = left_ts
+            insert_idx += 1
+            left_idx += 1
         else:
-            res[i, :] = right[r, :]
-            times[i] = rt
-            r += 1
+            # Take from right array
+            merged[insert_idx] = right[right_idx]
+            merged_times[insert_idx] = right_ts
+            insert_idx += 1
+            right_idx += 1
 
-    return res[:i], times[:i]
+    # Trim unused pre-allocated space
+    return merged[:insert_idx], merged_times[:insert_idx]
 
 
-def download(symbol: str, start=None, end=None, reindex=True):
+def download(symbol: str, start: datetime = None, end: datetime = None,
+             reindex: bool = True) -> pd.DataFrame:
     """
-    Downloads OHLCV data for a stock symbol using yfinance.
+    Download OHLCV data with robustness improvements.
 
-    This function retrieves OHLCV (Open, High, Low, Close, Volume) data for a specified
-    stock symbol from Yahoo Finance. It allows customization of the download start and end dates.
-
-    Args:
-        symbol (str): The stock symbol.
-        start (datetime.datetime, optional): The start date for the download. Defaults to None.
-        end (datetime.datetime, optional): The end date for the download. Defaults to None.
-
-    Returns:
-        pd.DataFrame: The downloaded OHLCV data as a DataFrame.
+    Key changes:
+    - Explicitly set repair=True to handle Yahoo's price discrepancies
+    - Add retry logic for transient network errors
     """
-
-    ohlc = yf.download(symbol,
-                       start=start,
-                       end=end,
-                       repair=True,
-                       prepost=True,
-                       interval="1m",
-                       ignore_tz=False,
-                       threads=False,
-                       timeout=30,
-                       progress=False)
-    ohlc.index = pd.to_datetime(ohlc.index).astype(np.int64) // 10 ** 3
-    if reindex:
-        ohlc = reindex_columns(ohlc, expected_columns)
-    return ohlc
-
-def reindex_columns(df, columns: dict[str, int]):
-    # Fix new column naming where Close is now f'Close/{SYMBOL}'
-
-    new_columns = set()
-    df_column = list(df.columns)
-    for i, col in enumerate(df.columns):
-        if isinstance(col, tuple):
-            col = col[0]
-        col: str = col.capitalize()
-        for sep in ('', '/', '^', ' '):
-            if sep:
-                col = col.split(sep)[0]
-            if col in columns:
-                new_columns.add(col)
-                df_column[i] = col
-                break
-    df.columns = df_column
-
-    if len(new_columns) != len(columns) or new_columns != set(columns.keys()):
-        raise ValueError(
-            f"Missing columns: {set(columns.keys()) - new_columns}"
-        )
-
-    return df.reindex(columns=columns.keys())
+    for attempt in range(3):
+        try:
+            ohlc = yf.download(
+                symbol, start=start, end=end, repair=True,
+                prepost=True, interval="1m", ignore_tz=False,
+                threads=False, timeout=30, progress=False
+            )
+            if ohlc.empty:
+                logging.warning(f"No data for {symbol}")
+                return pd.DataFrame(columns=COLUMN_NAMES)
+            # Convert timestamps to UTC microseconds
+            ohlc.index = pd.to_datetime(ohlc.index).astype(np.int64) // 10 ** 3
+            return reindex_columns(ohlc, EXPECTED_COLUMNS) if reindex else ohlc
+        except Exception as e:
+            if "duplicate labels" in str(e) or "dictionary changed size during iteration" in str(e):
+                yf.pdr_override = False
+                yf.Ticker(symbol)._history = None  # Clear cache
+            if attempt == 2:
+                raise
+            logging.warning(f"Retry {attempt + 1}/3 for {symbol}: {str(e)}")
+            time.sleep(2 ** attempt)
 
 
-
-def combine(symbol):
+def combine(symbol: str) -> pd.DataFrame:
     """
-    Combines downloaded OHLCV data for a stock symbol.
+    Combine historical and recent data with improved time range handling.
 
-    This function combines historical and recent OHLCV data for a given stock symbol. It
-    checks for existing data, downloads missing portions, and merges them into a single DataFrame.
-
-    Args:
-        symbol (str): The stock symbol.
-
-    Returns:
-        pd.DataFrame: The combined OHLCV DataFrame.
+    Fixes:
+    - Properly handle time intervals to avoid gaps
+    - Add type hints for better IDE support
+    - Simplify column management using constants
     """
+    # Initialize with existing data
+    file_path = Path(symbol_to_file_name(symbol))
+    if file_path.exists():
+        hist_data = pd.read_csv(file_path, dtype=np.float64, index_col="time")
+        hist_data = reindex_columns(hist_data, EXPECTED_COLUMNS)
+    else:
+        hist_data = None
 
-    file_name = symbol_to_file_name(symbol)
-    prev = None
-    
-    if Path(file_name).exists():
-        prev = pd.read_csv(file_name, dtype=np.float64, index_col=["time"])
-        prev.index = prev.index.astype(np.int64)
-        # Align columns with expected_columns, filling missing with NaN
-        prev = reindex_columns(prev, expected_columns)
+    # Download in 7-day chunks (Yahoo's 1m data limit)
+    start_date = datetime.now() - timedelta(days=28)
+    for _ in range(4):  # 4 weeks = 28 days
+        end_date = start_date + timedelta(days=7)
+        new_data = download(symbol, start_date, end_date)
+        hist_data = merge_data(hist_data, new_data)
+        start_date = end_date
 
-    start = datetime.datetime.now() - datetime.timedelta(days=28)
+    # Add latest data and return
+    return merge_data(hist_data, download(symbol))
 
-    def merge(left, right):
-        merged = merge_ohlcav(left.to_numpy(),
-                              right.to_numpy(),
-                              left.index.to_numpy('int64'),
-                              right.index.to_numpy('int64'))
-        return pd.DataFrame(*merged, columns=columns or None)
 
-    if (
-            prev is None or
-            len(prev) == 0 or
-            datetime.datetime.now().timestamp() - prev.index.to_numpy()[-1] // 1000 // 1000 >
-            6 * 24 * 60 * 60):
-        current = download(symbol, start, start := start + datetime.timedelta(days=6))
-        if prev is not None:
-            prev = merge(prev, current)
-        else:
-            prev = current
-            columns = list(current.columns)
-        for i in range(1, 4):
-            end = start + datetime.timedelta(days=6)
-            try:
-                new_one = download(symbol, start, end)
-                if new_one is not None and len(new_one) > 0:
-                    prev = merge(prev, new_one)
-            finally:
-                start = end
+def merge_data(existing: pd.DataFrame | None, new: pd.DataFrame) -> pd.DataFrame:
+    """Wrapper for merge_ohlcav with proper column handling"""
+    if existing is None or len(existing) == 0:
+        return new.copy() if not new.empty else pd.DataFrame(columns=COLUMN_NAMES)
 
-    current = download(symbol)
-
-    return merge(prev, current)
-
+    if new.empty:
+        return existing.copy()
+    merged, times = merge_ohlcav(
+        existing.to_numpy(), new.to_numpy(),
+        existing.index.to_numpy(), new.index.to_numpy()
+    )
+    return pd.DataFrame(merged, index=times, columns=COLUMN_NAMES)
 
 def process(symbol: str):
     """
@@ -261,7 +287,8 @@ def process(symbol: str):
     """
     file_name = symbol_to_file_name(symbol)
     df = combine(symbol)
-    df.to_csv(file_name, index_label='time')
+    if not df.empty:
+        df.to_csv(file_name, index_label='time')
     return symbol
 
 
