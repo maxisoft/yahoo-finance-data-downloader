@@ -127,8 +127,7 @@ def merge_ohlcav(left: np.ndarray, right: np.ndarray,
     merged_times = np.empty(n_left + n_right, dtype=left_time.dtype)
 
     # Use maximum possible timestamp value for comparison
-    max_ts = max(np.iinfo(left_time.dtype).max,
-                 np.iinfo(right_time.dtype).max)
+    max_ts = max(np.iinfo(left_time.dtype).max, np.iinfo(right_time.dtype).max)
 
     insert_idx = 0
 
@@ -243,6 +242,7 @@ def combine(symbol: str) -> pd.DataFrame:
     file_path = Path(symbol_to_file_name(symbol))
     if file_path.exists():
         hist_data = pd.read_csv(file_path, dtype=np.float64, index_col="time")
+        hist_data.index = hist_data.index.astype(np.int64)
         hist_data = reindex_columns(hist_data, EXPECTED_COLUMNS)
     else:
         hist_data = None
@@ -268,7 +268,7 @@ def merge_data(existing: pd.DataFrame | None, new: pd.DataFrame) -> pd.DataFrame
         return existing.copy()
     merged, times = merge_ohlcav(
         existing.to_numpy(), new.to_numpy(),
-        existing.index.to_numpy(), new.index.to_numpy()
+        existing.index.to_numpy('int64'), new.index.to_numpy('int64')
     )
     return pd.DataFrame(merged, index=times, columns=COLUMN_NAMES)
 
