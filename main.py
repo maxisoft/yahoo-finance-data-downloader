@@ -174,11 +174,14 @@ def combine(symbol):
 
     file_name = symbol_to_file_name(symbol)
     prev = None
-    columns = None
+    # Define expected columns to ensure consistency
+    expected_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+    
     if Path(file_name).exists():
         prev = pd.read_csv(file_name, dtype=np.float64, index_col=["time"])
-        prev.index = prev.index.to_numpy(np.int64)
-        columns = list(prev.columns)
+        prev.index = prev.index.astype(np.int64)
+        # Align columns with expected_columns, filling missing with NaN
+        prev = prev.reindex(columns=expected_columns)
 
     start = datetime.datetime.now() - datetime.timedelta(days=28)
 
@@ -209,7 +212,9 @@ def combine(symbol):
             finally:
                 start = end
                 
+    # After downloading new data, align columns
     current = download(symbol)
+    current = current.reindex(columns=expected_columns)  # Ensure current has expected columns
 
     return merge(prev, current)
 
