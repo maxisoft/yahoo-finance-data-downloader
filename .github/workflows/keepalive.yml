@@ -1,19 +1,31 @@
-name: Keep the repo alive
+name: Keep Repository Active
 on:
+  workflow_dispatch: # Allows manual triggering
   schedule:
-    - cron: "45 19 * * *"
-  push:
-  fork:
-  status:
-  issues:
+    - cron: "45 19 * * *" # Keeps your original schedule
 
 jobs:
-  cronjob-based-github-action:
-    name: Cronjob based github action
+  prevent-inactivity: # Renamed for clarity
+    name: Prevent Repository Inactivity
     runs-on: ubuntu-latest
+    # Permissions are crucial:
+    # 'contents: write' is needed for the dummy commit method.
+    permissions:
+      contents: write
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: gautamkrishnar/keepalive-workflow@v1
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Keepalive Workflow (Dummy Commit Mode)
+        uses: gautamkrishnar/keepalive-workflow@v2 # Updated to v2
         with:
+          # Explicitly use the dummy commit method
+          use_api: false
+          # Retain your custom committer details
           committer_username: ${{ github.repository_owner }}
           committer_email: ${{ github.repository_owner }}@users.noreply.github.com
+          # Optional: customize the commit message if desired
+          # commit_message: 'chore: keep repository active'
+          # Optional: adjust time_elapsed (default is 45 days)
+          # time_elapsed: 40
