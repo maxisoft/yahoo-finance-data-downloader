@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Keepalive Workflow (Dummy Commit Mode)
-        uses: gautamkrishnar/keepalive-workflow@v2 # Updated to v2
+        uses: gautamkrishnar/keepalive-workflow@latest # Updated to v2
         with:
           # Explicitly use the dummy commit method
           use_api: false
