@@ -6,5 +6,5 @@ yfinance~=0.2.54
 pandas~=2.2.3
 numba~=0.60.0
 numpy~=1.23.4
-pathvalidate~=3.2.1
+pathvalidate~=3.3.1
 scipy~=1.13.1
