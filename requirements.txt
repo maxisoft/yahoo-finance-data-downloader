@@ -1,6 +1,6 @@
 pip~=25.0
 setuptools~=80.9.0
-wheel~=0.44.0
+wheel~=0.45.1
 yfinance~=0.2.54
 
 pandas~=2.2.3
